@@ -1,4 +1,3 @@
-# build output
 GNU ARM*/
 *.o
 *.d
@@ -13,3 +12,7 @@ simplicity_sdk_*/
 .projectlinkstore
 .pdm/
 .settings/
+
+# teacher's material (remove these 2 lines if you want them in the repo)
+PDF/
+SourceCode/

@@ -1,0 +1,15 @@
+# build output
+GNU ARM*/
+*.o
+*.d
+*.axf
+*.hex
+*.bin
+*.s37
+*.map
+
+# Simplicity Studio per-machine stuff
+simplicity_sdk_*/
+.projectlinkstore
+.pdm/
+.settings/

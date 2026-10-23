@@ -93,6 +93,7 @@ I2C_TransferReturn_TypeDef i2c_write_read(
     for(size_t i = 0; i < read_length; i++){
         if (wait_flag(I2C_IF_RXDATAV) == 0) return i2c_fail(0);
         read_data[i] = (uint8_t)I2C0 -> RXDATA;
+        I2C0 -> IF_CLR = I2C_IF_RXDATAV;
         if(i < read_length - 1){
             I2C0 -> CMD = I2C_CMD_ACK;
         } else{

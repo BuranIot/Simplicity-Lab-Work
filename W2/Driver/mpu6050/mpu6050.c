@@ -2,18 +2,18 @@
 #include "../i2c/i2c.h"
 #include "sl_sleeptimer.h"
 
-#define REG_SMPLRT_DIV   0x19
-#define REG_CONFIG       0x1A
-#define REG_GYRO_CONFIG  0x1B
-#define REG_ACCEL_CONFIG 0x1C
-#define REG_ACCEL_XOUT_H 0x3B
-#define REG_TEMP_OUT_H   0x41
-#define REG_GYRO_XOUT_H  0x43
-#define REG_PWR_MGMT_1   0x6B
-#define REG_WHO_AM_I     0x75
+#define REG_SMPLRT_DIV   0x19   // Sample rate divider: rate = gyro output rate / (1 + value)
+#define REG_CONFIG       0x1A   // DLPF_CFG [2:0]: low-pass filter, 0/7 -> gyro 8 kHz, 1..6 -> 1 kHz
+#define REG_GYRO_CONFIG  0x1B   // FS_SEL [4:3]: gyro range 0=+-250, 1=+-500, 2=+-1000, 3=+-2000 deg/s
+#define REG_ACCEL_CONFIG 0x1C   // AFS_SEL [4:3]: accel range 0=+-2g, 1=+-4g, 2=+-8g, 3=+-16g
+#define REG_ACCEL_XOUT_H 0x3B   // First accel output byte, 6 bytes: X_H X_L Y_H Y_L Z_H Z_L
+#define REG_TEMP_OUT_H   0x41   // Temperature output, 2 bytes: TEMP_H TEMP_L
+#define REG_GYRO_XOUT_H  0x43   // First gyro output byte, 6 bytes: X_H X_L Y_H Y_L Z_H Z_L
+#define REG_PWR_MGMT_1   0x6B   // Power: DEVICE_RESET bit 7, SLEEP bit 6, CLKSEL [2:0] (0 = internal 8 MHz)
+#define REG_WHO_AM_I     0x75   // Device ID, reads 0x68 on a working MPU6050
 
-#define ACCEL_LSB_PER_G   16384   // AFS_SEL = 0, +-2g
-#define GYRO_LSB_PER_DPS  131     // FS_SEL = 0, +-250 deg/s
+#define ACCEL_LSB_PER_G   8192   // Accel sensitivity in LSB per g, depends on AFS_SEL (0 -> 8192, +-4g)
+#define GYRO_LSB_PER_DPS  655     // Gyro sensitivity in LSB per deg/s, depends on FS_SEL (0 -> 655, +-500 deg/s)
 
 static bool write_reg(
   uint8_t reg, 
@@ -49,17 +49,17 @@ bool mpu6050_init(void){
   //3. wake up (SLEEP = 0), clock = PLL with X gyro (CLKSEL = 1)
   if (!write_reg(REG_PWR_MGMT_1, 0x01)) return false;
 
-  //4. DLPF_CFG = 3: ~44 Hz bandwidth, gyro output rate 1 kHz
-  if (!write_reg(REG_CONFIG, 0x03)) return false;
+  //4. DLPF_CFG = 0:  gyro output rate 8 kHz
+  if (!write_reg(REG_CONFIG, 0x00)) return false;
 
-  //5. sample rate = 1 kHz / (1 + 9) = 100 Hz
-  if (!write_reg(REG_SMPLRT_DIV, 9)) return false;
+  //5. sample rate = 8 kHz / (1 + 3) = 2 kHz
+  if (!write_reg(REG_SMPLRT_DIV, 3)) return false;
 
-  //6. gyro +-250 deg/s (FS_SEL = 0)
-  if (!write_reg(REG_GYRO_CONFIG, 0x00)) return false;
+  //6. gyro +-500 deg/s (FS_SEL = 1)
+  if (!write_reg(REG_GYRO_CONFIG, 0x08)) return false;
 
-  //7. accel +-2g (AFS_SEL = 0)
-  if (!write_reg(REG_ACCEL_CONFIG, 0x00)) return false;
+  //7. accel +-4g (AFS_SEL = 1)
+  if (!write_reg(REG_ACCEL_CONFIG, 0x08)) return false;
 
   return true;
 }
@@ -85,8 +85,8 @@ bool mpu6050_read_gyro(
   uint8_t d[4];   // X_H X_L Y_H Y_L
   if (!read_regs(REG_GYRO_XOUT_H, d, 4)) return false;
 
-  *x_mdps = (int32_t)to_int16(&d[0]) * 1000 / GYRO_LSB_PER_DPS;
-  *y_mdps = (int32_t)to_int16(&d[2]) * 1000 / GYRO_LSB_PER_DPS;
+  *x_mdps = (int32_t)to_int16(&d[0]) * 10000 / GYRO_LSB_PER_DPS;
+  *y_mdps = (int32_t)to_int16(&d[2]) * 10000 / GYRO_LSB_PER_DPS;
   return true;
 
 }

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#define MPU6050_ADDR 0x68
+#define MPU6050_ADDR 0x69   // 7-bit I2C address: AD0 to GND = 0x68, AD0 to 3.3V = 0x69
 
 bool mpu6050_init(void);
 bool mpu6050_read_accel(int32_t *x_mg, int32_t *y_mg, int32_t *z_mg);

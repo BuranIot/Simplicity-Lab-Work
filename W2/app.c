@@ -42,7 +42,7 @@ void app_init(void)
 {
     uart_init(115200, 8, 'N', 2, 16);
     i2c_init();
-
+    uart_send_string("\033[2J\033[H");      // cursor home
     sensor_ready = mpu6050_init();
     uart_send_string(sensor_ready ? "MPU6050 ready\r\n"
                                   : "MPU6050 init FAILED\r\n");
@@ -54,7 +54,7 @@ void app_init(void)
 void app_process_action(void)
 {
   int32_t ax, ay, az, gx, gy, t;
-
+  uart_send_string("\033[H");      // cursor home
   if (!sensor_ready){
     // retry every second until the sensor answers
     sl_sleeptimer_delay_millisecond(1000);
@@ -62,23 +62,29 @@ void app_process_action(void)
     uart_send_string(sensor_ready ? "MPU6050 ready\r\n"
                                       : "MPU6050 init FAILED\r\n");
     return;
-  }
+  } 
 
   if (mpu6050_read_accel(&ax, &ay, &az)){
     print_fixed("AccelX", ax, 1000, 3, "g");
     print_fixed("AccelY", ay, 1000, 3, "g");
     print_fixed("AccelZ", az, 1000, 3, "g");
-  }
+  } else {
+  uart_send_string("accel read FAIL\r\n");
+}
 
   if (mpu6050_read_gyro(&gx, &gy)){
       print_fixed("GyroX", gx, 1000, 2 + 1, "deg/s");
       print_fixed("GyroY", gy, 1000, 2 + 1, "deg/s");
-  }
+  } else {
+  uart_send_string("gyro read FAIL\r\n");
+}
 
   if (mpu6050_read_temp(&t)){
       print_fixed("Temperature", t, 100, 2, "C");
-  }
+  } else {
+  uart_send_string("temp read FAIL\r\n");
+}
 
   uart_send_string("\r\n");
-  sl_sleeptimer_delay_millisecond(500);
+  sl_sleeptimer_delay_millisecond(250);
 }

@@ -44,7 +44,7 @@
 #define CMD_ALL_CLEAR     0x04
 
 /* 0 = Data Update Mode 1 line, 1 = Data Update Mode multiple line */
-#define LCD_TX_MULTI_LINE 0
+#define LCD_TX_MULTI_LINE 1
 
 /* Concatenate preprocessor tokens A and B. */
 #define SL_CONCAT(A, B) A ## B

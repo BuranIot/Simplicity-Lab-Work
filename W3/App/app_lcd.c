@@ -1,8 +1,8 @@
 /*
- * lcd.c
+ * app_lcd.c
  *
- *  Created on: Nov 4, 2024
- *      Author: Phat_Dang
+ *  Lab 3 SPI - clock application on the memory LCD.
+ *  Shows student name, student ID and HH:MM:SS (starting at 00:00:00).
  */
 #include <stdio.h>
 #include <string.h>
@@ -11,30 +11,36 @@
 #include "sl_board_control.h"
 #include "sl_sleeptimer.h"
 #include "em_assert.h"
+#include "em_core.h"
 #include "Middleware/glib/glib.h"
 #include "Middleware/glib/dmd.h"
+#include "App/app_lcd.h"
 
-#ifndef LCD_MAX_LINES
-#define LCD_MAX_LINES      11
-#endif
+/* Student info shown on the LCD (narrow font: max 21 chars per line) */
+#define STUDENT_NAME       "Tran Dong Duong"
+#define STUDENT_ID         "MSSV: 23207049"
 
 /* Clock tick period */
 #define CLOCK_TICK_MS      1000
 
+/* Name / ID lines (6x8 font), centered */
+#define TEXT_LINE_NAME     0
+#define TEXT_LINE_ID       1
+#define TEXT_Y_OFFSET      36
+
 /* Position of the big HH:MM:SS text (16x20 font, 8 chars = 128 px wide) */
 #define CLOCK_X            0
-#define CLOCK_Y            54
+#define CLOCK_Y            60
 
 /*******************************************************************************
  ***************************  LOCAL VARIABLES   ********************************
  ******************************************************************************/
 static GLIB_Context_t glibContext;
-static int currentLine = 0;
 
 static sl_sleeptimer_timer_handle_t clock_timer;
 
-/* Seconds since midnight, counted in the timer callback */
-static volatile uint32_t clock_seconds;
+/* Current time, advanced in the timer callback */
+static volatile time_lcd_t clock_time = { 0, 0, 0 };
 
 /* Set by the timer callback, cleared after the display is redrawn */
 static volatile bool clock_update = false;
@@ -42,6 +48,22 @@ static volatile bool clock_update = false;
 /*******************************************************************************
  ***************************  LOCAL FUNCTIONS   ********************************
  ******************************************************************************/
+
+/***************************************************************************//**
+ * Advance the time by one second, wrapping at 23:59:59.
+ ******************************************************************************/
+static void time_lcd_tick(volatile time_lcd_t *t)
+{
+  if (++t->seconds >= 60) {
+    t->seconds = 0;
+    if (++t->minutes >= 60) {
+      t->minutes = 0;
+      if (++t->hours >= 24) {
+        t->hours = 0;
+      }
+    }
+  }
+}
 
 /***************************************************************************//**
  * Sleeptimer callback, runs every CLOCK_TICK_MS in interrupt context.
@@ -52,7 +74,7 @@ static void clock_timer_callback(sl_sleeptimer_timer_handle_t *handle, void *dat
   (void) handle;
   (void) data;
 
-  clock_seconds = (clock_seconds + 1) % (24 * 3600);
+  time_lcd_tick(&clock_time);
   clock_update = true;
 }
 
@@ -62,17 +84,27 @@ static void clock_timer_callback(sl_sleeptimer_timer_handle_t *handle, void *dat
 static void clock_draw(void)
 {
   char buf[9];
-  uint32_t t = clock_seconds;
+  time_lcd_t t;
+  EMSTATUS status;
 
-  snprintf(buf, sizeof(buf), "%02lu:%02lu:%02lu",
-           (unsigned long)(t / 3600),
-           (unsigned long)((t / 60) % 60),
-           (unsigned long)(t % 60));
+  /* Copy the time atomically so the callback can't change it half-way */
+  CORE_DECLARE_IRQ_STATE;
+  CORE_ENTER_ATOMIC();
+  t.hours   = clock_time.hours;
+  t.minutes = clock_time.minutes;
+  t.seconds = clock_time.seconds;
+  CORE_EXIT_ATOMIC();
 
-  GLIB_setFont(&glibContext, (GLIB_Font_t *) &GLIB_FontNumber16x20);
-  GLIB_drawString(&glibContext, buf, strlen(buf), CLOCK_X, CLOCK_Y, true);
+  snprintf(buf, sizeof(buf), "%02u:%02u:%02u",
+           (unsigned)t.hours, (unsigned)t.minutes, (unsigned)t.seconds);
 
-  DMD_updateDisplay();
+  status = GLIB_setFont(&glibContext, (GLIB_Font_t *) &GLIB_FontNumber16x20);
+  EFM_ASSERT(status == GLIB_OK);
+  status = GLIB_drawString(&glibContext, buf, strlen(buf), CLOCK_X, CLOCK_Y, true);
+  EFM_ASSERT(status == GLIB_OK);
+
+  status = DMD_updateDisplay();
+  EFM_ASSERT(status == DMD_OK);
 }
 
 /*******************************************************************************
@@ -80,7 +112,7 @@ static void clock_draw(void)
  ******************************************************************************/
 
 /***************************************************************************//**
- * Initialize example.
+ * Initialize the LCD, draw name / ID / 00:00:00 and start the 1 s timer.
  ******************************************************************************/
 void memlcd_app_init(void)
 {
@@ -102,34 +134,33 @@ void memlcd_app_init(void)
   glibContext.foregroundColor = Black;
 
   /* Fill lcd with background color */
-  GLIB_clear(&glibContext);
+  status = GLIB_clear(&glibContext);
+  EFM_ASSERT(status == GLIB_OK);
 
-  /* Use Narrow font */
-  GLIB_setFont(&glibContext, (GLIB_Font_t *) &GLIB_FontNarrow6x8);
+  /* Use Narrow font so longer names still fit on one line */
+  status = GLIB_setFont(&glibContext, (GLIB_Font_t *) &GLIB_FontNarrow6x8);
+  EFM_ASSERT(status == GLIB_OK);
 
-  /* Draw text on the memory lcd display*/
-  GLIB_drawStringOnLine(&glibContext,
-                        "LAB 3 SPI",
-                        currentLine++,
-                        GLIB_ALIGN_LEFT,
-                        5,
-                        5,
-                        true);
+  /* Student name and ID, centered */
+  status = GLIB_drawStringOnLine(&glibContext,
+                                 STUDENT_NAME,
+                                 TEXT_LINE_NAME,
+                                 GLIB_ALIGN_CENTER,
+                                 0,
+                                 TEXT_Y_OFFSET,
+                                 true);
+  EFM_ASSERT(status == GLIB_OK);
 
-  GLIB_drawStringOnLine(&glibContext,
-                        "CLOCK",
-                        currentLine++,
-                        GLIB_ALIGN_LEFT,
-                        5,
-                        5,
-                        true);
+  status = GLIB_drawStringOnLine(&glibContext,
+                                 STUDENT_ID,
+                                 TEXT_LINE_ID,
+                                 GLIB_ALIGN_CENTER,
+                                 0,
+                                 TEXT_Y_OFFSET,
+                                 true);
+  EFM_ASSERT(status == GLIB_OK);
 
-  /* Start from the build time ("HH:MM:SS") */
-  const char *build_time = __TIME__;
-  clock_seconds = (uint32_t)((build_time[0] - '0') * 10 + (build_time[1] - '0')) * 3600
-                  + (uint32_t)((build_time[3] - '0') * 10 + (build_time[4] - '0')) * 60
-                  + (uint32_t)((build_time[6] - '0') * 10 + (build_time[7] - '0'));
-
+  /* Start from 00:00:00 */
   clock_draw();
 
   /* Tick every second */
@@ -142,9 +173,8 @@ void memlcd_app_init(void)
   EFM_ASSERT(status == SL_STATUS_OK);
 }
 
-
 /***************************************************************************//**
- * Ticking function.
+ * Ticking function: redraw the clock when the timer says a second passed.
  ******************************************************************************/
 void memlcd_app_process_action(void)
 {
@@ -153,4 +183,3 @@ void memlcd_app_process_action(void)
     clock_draw();
   }
 }
-

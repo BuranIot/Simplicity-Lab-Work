@@ -13,7 +13,7 @@ DocumentNamespace: https://silabs.com
 
 ## Creation Information
 Creator: Organization: Silicon Laboratories, Inc.
-Created: 2026-11-03T01:42:53Z
+Created: 2026-11-05T06:37:17Z
 ## Relationships
 Relationship: SPDXRef-DOCUMENT DESCRIBES SPDXRef-simplicity_sdk-2025.6.3
 
@@ -29,6 +29,8 @@ Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-20
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-brd4180b
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-clock_manager
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-device_init
+Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-emlib_timer
+Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-emlib_usart
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-sl_main
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-emlib_chip
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-emlib_gpio
@@ -69,8 +71,7 @@ Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-20
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-sl_main_process_action
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-status
 Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-gpio
-Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-emlib_timer
-Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-emlib_usart
+Relationship: SPDXRef-simplicity_sdk-2025.6.3 CONTAINS SPDXRef-simplicity_sdk-2025.6.3-emlib_ldma
 
 ## Package Information
 PackageName: EFR32MG21A020F1024IM32
@@ -115,6 +116,28 @@ PackageSupplier: Organization: Silicon Laboratories, Inc.
 PackageLicenseConcluded: Zlib
 ## Relationships
 Relationship: SPDXRef-simplicity_sdk-2025.6.3-device_init CONTAINED_BY SPDXRef-simplicity_sdk-2025.6.3
+
+## Package Information
+PackageName: TIMER
+SPDXID: SPDXRef-simplicity_sdk-2025.6.3-emlib_timer
+PackageVersion: 2025.6.3
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-simplicity_sdk-2025.6.3-emlib_timer CONTAINED_BY SPDXRef-simplicity_sdk-2025.6.3
+
+## Package Information
+PackageName: USART
+SPDXID: SPDXRef-simplicity_sdk-2025.6.3-emlib_usart
+PackageVersion: 2025.6.3
+PrimaryPackagePurpose: LIBRARY
+PackageDownloadLocation: NOASSERTION
+PackageSupplier: Organization: Silicon Laboratories, Inc.
+PackageLicenseConcluded: Zlib
+## Relationships
+Relationship: SPDXRef-simplicity_sdk-2025.6.3-emlib_usart CONTAINED_BY SPDXRef-simplicity_sdk-2025.6.3
 
 ## Package Information
 PackageName: System Setup (sl_main)
@@ -572,23 +595,12 @@ PackageLicenseConcluded: Zlib
 Relationship: SPDXRef-simplicity_sdk-2025.6.3-gpio CONTAINED_BY SPDXRef-simplicity_sdk-2025.6.3
 
 ## Package Information
-PackageName: TIMER
-SPDXID: SPDXRef-simplicity_sdk-2025.6.3-emlib_timer
+PackageName: LDMA
+SPDXID: SPDXRef-simplicity_sdk-2025.6.3-emlib_ldma
 PackageVersion: 2025.6.3
 PrimaryPackagePurpose: LIBRARY
 PackageDownloadLocation: NOASSERTION
 PackageSupplier: Organization: Silicon Laboratories, Inc.
 PackageLicenseConcluded: Zlib
 ## Relationships
-Relationship: SPDXRef-simplicity_sdk-2025.6.3-emlib_timer CONTAINED_BY SPDXRef-simplicity_sdk-2025.6.3
-
-## Package Information
-PackageName: USART
-SPDXID: SPDXRef-simplicity_sdk-2025.6.3-emlib_usart
-PackageVersion: 2025.6.3
-PrimaryPackagePurpose: LIBRARY
-PackageDownloadLocation: NOASSERTION
-PackageSupplier: Organization: Silicon Laboratories, Inc.
-PackageLicenseConcluded: Zlib
-## Relationships
-Relationship: SPDXRef-simplicity_sdk-2025.6.3-emlib_usart CONTAINED_BY SPDXRef-simplicity_sdk-2025.6.3
+Relationship: SPDXRef-simplicity_sdk-2025.6.3-emlib_ldma CONTAINED_BY SPDXRef-simplicity_sdk-2025.6.3

@@ -29,6 +29,7 @@ component:
 - {id: brd4180b}
 - {id: clock_manager}
 - {id: device_init}
+- {id: emlib_ldma}
 - {id: emlib_timer}
 - {id: emlib_usart}
 - {id: sl_main}

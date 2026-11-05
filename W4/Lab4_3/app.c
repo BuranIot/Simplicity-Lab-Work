@@ -1,64 +1,60 @@
 /***************************************************************************//**
  * @file
- * @brief Lab 4 - Bai 3: same as Bai 2 but WITHOUT DMA (CPU sends every byte)
+ * @brief Lab 4 - CA3 Cau 2: count "aba" (overlaps included) in 16 bytes
  *
- * PC sends one command char (read by CPU):
- *   '1' -> 10 bytes, '2' -> 100 bytes, '3' -> 1000 bytes
- * Board fills txbuf with random chars, sends it byte by byte with the CPU,
- * measures the time with TIMER0, then prints:
- *   measured time (TIMER0)  vs  theory time (W1 Bai 2 formula)
+ * PC sends a 16-byte string.
+ * - LDMA (channel 0) moves the bytes from USART0 RX buffer into inbuf (RAM).
+ * - CPU searches inbuf for PATTERN, overlapping matches count too.
+ * - CPU writes the result into the USART TX buffer: "aba - 4 lan".
+ *
+ * Example: abacbabacxyababa -> matches at 0, 5, 11, 13 -> "aba - 4 lan"
  ******************************************************************************/
 #include <stdio.h>
+#include <string.h>
 #include "app.h"
 #include "Driver/uart/uart.h"
-#include "Driver/timer/timer.h"
+#include "Driver/dma/dma.h"
 
-#define TX_MAX 1000
+#define MSG_LEN 16                   // bytes per message from the PC
+#define PATTERN "aba"
+#define PAT_LEN (sizeof(PATTERN) - 1) // 3, without the '\0'
 
-static uint8_t  txbuf[TX_MAX];
-static uint32_t seed = 12345;    // same seed as Bai 2 -> same data, fair compare
+static uint8_t  inbuf[MSG_LEN];
+static uint16_t got = 0;             // real (non-Enter) bytes already in inbuf
 
-// Simple LCG pseudo-random generator (no need for stdlib rand())
-static uint32_t next_rand(void)
+// Ask the LDMA for the bytes still missing, written right after the ones we have
+static void rx_continue(void)
 {
-  seed = seed * 1103515245u + 12345u;
-  return seed >> 16;
+  dma_uart_rx_start(&inbuf[got], (uint16_t)(MSG_LEN - got));
 }
 
-// Random lowercase letters + digits, like "ahcnfue12s"
-static void fill_data(uint8_t *buf, uint16_t len)
+// Remove '\r' / '\n' that DMA just wrote into inbuf[got..MSG_LEN-1].
+// If the user presses Enter, those bytes must not count as data,
+// otherwise every next message is shifted.
+static void drop_enter(void)
 {
-  static const char chars[] = "abcdefghijklmnopqrstuvwxyz0123456789";
+  uint16_t w = got;
 
-  for (uint16_t i = 0; i < len; i++) {
-    buf[i] = (uint8_t)chars[next_rand() % (sizeof chars - 1)];
+  for (uint16_t r = got; r < MSG_LEN; r++) {
+    if (inbuf[r] != '\r' && inbuf[r] != '\n') {
+      inbuf[w++] = inbuf[r];
+    }
   }
+  got = w;
 }
 
-// CPU sends every byte itself: USART_Tx() waits for TXBL, then writes TXDATA.
-// Stops at the same point as the DMA version (last byte written to TXDATA).
-static uint32_t cpu_send_measure(const uint8_t *buf, uint16_t len)
+// Slide a window of PAT_LEN bytes ONE step at a time -> overlaps are counted.
+// e.g. "ababa": match at 0 and at 2 -> 2
+static uint16_t count_pattern(const uint8_t *buf, uint16_t len)
 {
-  timer_start();
-  for (uint16_t i = 0; i < len; i++) {
-    uart_send_byte(buf[i]);      // CPU is busy the whole time
+  uint16_t n = 0;
+
+  for (uint16_t i = 0; i + PAT_LEN <= len; i++) {
+    if (memcmp(&buf[i], PATTERN, PAT_LEN) == 0) {
+      n++;
+    }
   }
-  return timer_stop_us();
-}
-
-// W1 Bai 2 formula: time = chars * bits_per_frame / baud
-static uint32_t theory_us(uint32_t chars)
-{
-  uint8_t  halves = uart_frame_halfbits();   // bits per frame x2 (1.5 stop bit case)
-  uint32_t baud   = uart_actual_baud();
-  uint64_t num    = (uint64_t)chars * halves * 1000000u;
-
-  return (uint32_t)((num + baud) / (2u * (uint64_t)baud));   // rounded
-}
-
-static void print_help(void)
-{
-  uart_send_string("\r\nSend 1 (10 B), 2 (100 B), 3 (1000 B)\r\n");
+  return n;
 }
 
 /***************************************************************************//**
@@ -66,20 +62,12 @@ static void print_help(void)
  ******************************************************************************/
 void app_init(void)
 {
-  char msg[64];
-  uint8_t halves;
-
   uart_init(115200, 8, 'N', 2, 16);   // 8N1, stop_halves = 2 -> 1 stop bit
-  timer_init();
+  dma_init();
 
-  halves = uart_frame_halfbits();
-  uart_send_string("\r\nLab 4 - Bai 3: CPU Memory -> UART timing (no DMA)\r\n");
-  snprintf(msg, sizeof msg, "TIMER0 %lu Hz | baud %lu | %u.%u bits/frame\r\n",
-           (unsigned long)timer_clock_hz(),
-           (unsigned long)uart_actual_baud(),
-           halves / 2u, (halves % 2u) * 5u);
-  uart_send_string(msg);
-  print_help();
+  uart_send_string("\r\nLab 4 - Cau 2: send 16 bytes, count \"" PATTERN "\"\r\n");
+  got = 0;
+  rx_continue();
 }
 
 /***************************************************************************//**
@@ -87,33 +75,30 @@ void app_init(void)
  ******************************************************************************/
 void app_process_action(void)
 {
-  char msg[64];
-  uint16_t len;
+  char msg[48];
 
-  if (!uart_recv_ready()) {
-    return;                      // no command yet
+  if (!dma_uart_rx_done()) {
+    return;                          // LDMA still filling inbuf
   }
 
-  uint8_t cmd = uart_recv_byte(); // CPU reads the request
+  drop_enter();                      // throw away Enter keys, keep real data
 
-  switch (cmd) {
-    case '1': len = 10;   break;
-    case '2': len = 100;  break;
-    case '3': len = 1000; break;
-    case '\r':
-    case '\n':
-      return;                    // ignore Enter
-    default:
-      print_help();
-      return;
+  if (got < MSG_LEN) {
+    rx_continue();                   // Enter took some slots -> get the rest
+    return;
   }
 
-  fill_data(txbuf, len);         // prepare data BEFORE timing
+  // Full 16 bytes: CPU does the search
+  uint16_t n = count_pattern(inbuf, MSG_LEN);
 
-  uint32_t us = cpu_send_measure(txbuf, len);
-
-  // Print AFTER the timer is stopped so printing is not measured
-  snprintf(msg, sizeof msg, "\r\nCPU: %lu us | theory: %lu us\r\n",
-           (unsigned long)us, (unsigned long)theory_us(len));
+  // Reply with CPU (small amount of data)
+  uart_send_string("\r\nData: ");
+  for (uint16_t i = 0; i < MSG_LEN; i++) {
+    uart_send_byte(inbuf[i]);
+  }
+  snprintf(msg, sizeof msg, "\r\n" PATTERN " - %u lan\r\n", n);
   uart_send_string(msg);
+
+  got = 0;                           // next message
+  rx_continue();
 }

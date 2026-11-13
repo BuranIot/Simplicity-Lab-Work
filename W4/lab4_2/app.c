@@ -3,10 +3,11 @@
  * @brief Lab 4 - CA3 Cau 3: send TX_LEN bytes Memory -> USART, DMA vs CPU
  *
  * PC sends one command char (CPU reads it):
- *   '0' -> send with CPU (byte by byte, no DMA)
- *   '1' -> send with LDMA (channel 1)
- * Board replies with the data, then the time measured with TIMER0.
- * For DMA it also prints how many loop rounds the CPU had free while waiting.
+ *   '0' -> CPU fills ALL the data, then sends it byte by byte (no DMA)
+ *   '1' -> ping-pong with LDMA (channel 1), CHUNK bytes at a time:
+ *          fill buf 1 -> DMA sends buf 1 while CPU fills buf 2
+ *          -> DMA sends buf 2 while CPU fills buf 1 -> ... (N_CHUNKS times)
+ * Timer counts fill + send for both, so the overlap shows up in the time.
  ******************************************************************************/
 #include <stdio.h>
 #include "app.h"
@@ -14,9 +15,13 @@
 #include "Driver/dma/dma.h"
 #include "Driver/timer/timer.h"
 
-#define TX_LEN 1000   // bytes per test, must be <= DMA_MAX_XFER (2048)
+#define TX_LEN   1000                // total bytes per test
+#define CHUNK    10                 // bytes per ping-pong buffer
+#define N_CHUNKS (TX_LEN / CHUNK)    // 10 rounds of fill + send
 
-static uint8_t  txbuf[TX_LEN];   // static: DMA reads it after the call returns
+static uint8_t  txbuf[TX_LEN];        // CPU method buffer
+static uint8_t  pp_buf[2][CHUNK];     // DMA ping-pong: buf 1 / buf 2 (static: DMA
+                                      // reads it after the call returns)
 static uint32_t seed = 12345;
 
 // Simple LCG pseudo-random generator (no need for stdlib rand())
@@ -36,31 +41,34 @@ static void fill_data(uint8_t *buf, uint16_t len)
   }
 }
 
-// DMA method: LDMA moves the bytes, CPU only waits for the done interrupt.
-// idle = how many loop rounds the CPU was free (could do other work / sleep).
-static uint32_t dma_send_measure(const uint8_t *buf, uint16_t len, uint32_t *idle)
+// CPU method: CPU fills everything, then writes every byte itself
+// (USART_Tx() waits for TXBL each time). Fill and send can't overlap.
+static uint32_t cpu_fill_send(void)
 {
-  uint32_t free_rounds = 0;
-
   timer_start();
-  dma_uart_tx_start(buf, len);
-  while (!dma_uart_tx_done()) {
-    free_rounds++;               // CPU is NOT needed for the transfer
+  fill_data(txbuf, TX_LEN);
+  for (uint16_t i = 0; i < TX_LEN; i++) {
+    uart_send_byte(txbuf[i]);
   }
-  uint32_t us = timer_stop_us();
-
-  *idle = free_rounds;
-  return us;
+  return timer_stop_us();
 }
 
-// CPU method: CPU writes every byte itself. USART_Tx() waits for TXBL,
-// so the CPU is busy for the whole transfer (0 free rounds).
-// Stops at the same point as the DMA version (last byte written to TXDATA).
-static uint32_t cpu_send_measure(const uint8_t *buf, uint16_t len)
+// DMA method, ping-pong with two CHUNK-byte buffers, repeated N_CHUNKS times:
+//   DMA sends buf[cur] while the CPU fills buf[next], then swap.
+static uint32_t dma_fill_send(void)
 {
+  uint8_t cur = 0;
+
   timer_start();
-  for (uint16_t i = 0; i < len; i++) {
-    uart_send_byte(buf[i]);
+  fill_data(pp_buf[0], CHUNK);                  // first chunk ready
+  for (uint16_t k = 0; k < N_CHUNKS; k++) {
+    dma_uart_tx_start(pp_buf[cur], CHUNK);      // DMA sends buf[cur] ...
+    if (k + 1u < N_CHUNKS) {
+      fill_data(pp_buf[cur ^ 1u], CHUNK);       // ... while CPU fills the other
+    }
+    while (!dma_uart_tx_done()) {               // wait before reusing buf[cur]
+    }
+    cur ^= 1u;                                  // swap
   }
   return timer_stop_us();
 }
@@ -75,40 +83,21 @@ static uint32_t theory_us(uint32_t chars)
   return (uint32_t)((num + baud) / (2u * (uint64_t)baud));   // rounded
 }
 
-static void run_dma(void)
+// Print AFTER the timer is stopped so printing is not measured
+static void report(const char *name, uint32_t total)
 {
-  char msg[80];
-  uint32_t idle;
-  uint32_t us = dma_send_measure(txbuf, TX_LEN, &idle);
+  char msg[96];
 
-  // Print AFTER the timer is stopped so printing is not measured
-  snprintf(msg, sizeof msg, "\r\n[DMA] %u B: %lu us | CPU free rounds: %lu\r\n",
-           (unsigned)TX_LEN, (unsigned long)us, (unsigned long)idle);
-  uart_send_string(msg);
-}
-
-static void run_cpu(void)
-{
-  char msg[80];
-  uint32_t us = cpu_send_measure(txbuf, TX_LEN);
-
-  snprintf(msg, sizeof msg, "\r\n[CPU] %u B: %lu us | CPU free rounds: 0\r\n",
-           (unsigned)TX_LEN, (unsigned long)us);
-  uart_send_string(msg);
-}
-
-static void print_theory(void)
-{
-  char msg[48];
-
-  snprintf(msg, sizeof msg, "[Theory] %u B: %lu us\r\n",
-           (unsigned)TX_LEN, (unsigned long)theory_us(TX_LEN));
+  snprintf(msg, sizeof msg,
+           "\r\n[%s] %u B fill + send: %lu us | send (theory): %lu us\r\n",
+           name, (unsigned)TX_LEN, (unsigned long)total,
+           (unsigned long)theory_us(TX_LEN));
   uart_send_string(msg);
 }
 
 static void print_help(void)
 {
-  uart_send_string("\r\nSend 0 (CPU, no DMA) or 1 (DMA)\r\n");
+  uart_send_string("\r\nSend 0 (CPU, no DMA) or 1 (DMA ping-pong)\r\n");
 }
 
 /***************************************************************************//**
@@ -124,7 +113,6 @@ void app_init(void)
   timer_init();
 
   halves = uart_frame_halfbits();
-  uart_send_string("\r\nLab 4 - Cau 3: Memory -> USART, DMA vs CPU\r\n");
   snprintf(msg, sizeof msg, "TIMER0 %lu Hz | baud %lu | %u.%u bits/frame\r\n",
            (unsigned long)timer_clock_hz(),
            (unsigned long)uart_actual_baud(),
@@ -146,15 +134,11 @@ void app_process_action(void)
 
   switch (cmd) {
     case '0':
-      fill_data(txbuf, TX_LEN);  // prepare data BEFORE timing
-      run_cpu();
-      print_theory();
+      report("CPU", cpu_fill_send());
       break;
 
     case '1':
-      fill_data(txbuf, TX_LEN);
-      run_dma();
-      print_theory();
+      report("DMA", dma_fill_send());
       break;
 
     case '\r':
